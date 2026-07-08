@@ -140,7 +140,7 @@ async def show_playlist_button(message: types.Message, state: FSMContext):
     if not songs:
         await message.answer(
             "🎵 <b>Плейлист пуст!</b>\n\n"
-            "Нажми ➕ Добавить песню, чтобы добавить первый трек!",
+            "Нажми ➕ Добавить песню, чтобы добавить трек!",
             reply_markup=get_main_keyboard(),
             parse_mode="HTML"
         )
