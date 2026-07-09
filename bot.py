@@ -6,7 +6,7 @@ import re
 import io
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -19,12 +19,11 @@ dp = Dispatcher()
 
 # ===== СОСТОЯНИЯ =====
 class SongState(StatesGroup):
-    choosing_method = State()          # Выбор способа добавления
-    waiting_for_link = State()         # Ожидание ссылки (ручной ввод)
-    waiting_for_title = State()        # Ожидание названия (ручной ввод)
+    choosing_method = State()
+    waiting_for_link = State()
+    waiting_for_title = State()
     waiting_for_delete_id = State()
-    waiting_for_itunes_query = State() # Ожидание запроса для iTunes
-    choosing_itunes_result = State()   # Выбор результата iTunes
+    waiting_for_search_query = State()
 
 # ===== БАЗА ДАННЫХ =====
 def init_db():
@@ -35,18 +34,19 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             artist TEXT,
             title TEXT,
-            url TEXT
+            url TEXT,
+            artwork TEXT
         )
     ''')
     conn.commit()
     conn.close()
 
-def add_song_to_db(artist, title, url):
+def add_song_to_db(artist, title, url, artwork=''):
     conn = sqlite3.connect('playlist.db')
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO songs (artist, title, url) VALUES (?, ?, ?)',
-        (artist, title, url)
+        'INSERT INTO songs (artist, title, url, artwork) VALUES (?, ?, ?, ?)',
+        (artist, title, url, artwork)
     )
     conn.commit()
     conn.close()
@@ -54,7 +54,7 @@ def add_song_to_db(artist, title, url):
 def get_all_songs():
     conn = sqlite3.connect('playlist.db')
     cursor = conn.cursor()
-    cursor.execute('SELECT id, artist, title, url FROM songs')
+    cursor.execute('SELECT id, artist, title, url, artwork FROM songs')
     songs = cursor.fetchall()
     conn.close()
     return songs
@@ -72,7 +72,7 @@ def get_main_keyboard():
         keyboard=[
             [KeyboardButton(text="🎵 Плейлист")],
             [KeyboardButton(text="➕ Добавить песню"), KeyboardButton(text="🗑 Удалить песню")],
-            [KeyboardButton(text="❓ Помощь")]
+            [KeyboardButton(text=" Помощь")]
         ],
         resize_keyboard=True,
         one_time_keyboard=False
@@ -89,14 +89,37 @@ def get_cancel_keyboard():
     return keyboard
 
 def get_add_method_keyboard():
-    """Клавиатура выбора способа добавления"""
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🔍 Поиск iTunes"), KeyboardButton(text="✍️ Ручной ввод")],
+            [KeyboardButton(text="🔍 Поиск в iTunes"), KeyboardButton(text="✍️ Ручной ввод")],
             [KeyboardButton(text="🔙 Назад")]
         ],
         resize_keyboard=True
     )
+    return keyboard
+
+def get_search_results_keyboard(results):
+    """Создаёт inline-кнопки со списком найденных песен"""
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[])
+    
+    for i, track in enumerate(results):
+        # Обрезаем длинные названия
+        button_text = f"🎵 {track['artist']} - {track['title']}"
+        if len(button_text) > 50:
+            button_text = button_text[:47] + "..."
+        
+        keyboard.inline_keyboard.append([
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"select_track_{i}"
+            )
+        ])
+    
+    # Кнопка отмены
+    keyboard.inline_keyboard.append([
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_search")
+    ])
+    
     return keyboard
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -128,7 +151,6 @@ async def search_deezer(query):
     """Ищет песню в Deezer"""
     try:
         async with aiohttp.ClientSession() as session:
-            # Deezer API не требует токенов!
             params = {
                 'q': query,
                 'limit': 5
@@ -156,9 +178,8 @@ async def search_deezer(query):
                         ]
         return []
     except Exception as e:
-        print(f"Ошибка поиска Deezer: {e}")
+        print(f"Ошибка поиска : {e}")
         return []
-
 
 # ===== ХРАНИЛИЩЕ ВРЕМЕННЫХ ДАННЫХ =====
 user_temp_data = {}
@@ -173,15 +194,16 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         "🎉 <b>Привет! Я бот для создания общего плейлиста!</b>\n\n"
         "🎧 <b>Что я умею:</b>\n"
-        "• Добавлять песни по ссылке и по названию\n"
-        "• Показывать общий плейлист\n"
-        "• Удалять песни из плейлиста\n\n"
+        "•  Искать песни через Deezer\n"
+        "• ➕ Добавлять песни по ссылке\n"
+        "• 🎵 Показывать общий плейлист с обложками\n"
+        "• 🗑 Удалять песни из плейлиста\n\n"
         "👇 <b>Используй кнопки ниже:</b>",
         reply_markup=get_main_keyboard(),
         parse_mode="HTML"
     )
 
-@dp.message(lambda msg: msg.text == "🎵 Плейлист")
+@dp.message(lambda msg: msg.text == " Плейлист")
 async def show_playlist_button(message: types.Message, state: FSMContext):
     await state.clear()
     
@@ -198,7 +220,7 @@ async def show_playlist_button(message: types.Message, state: FSMContext):
     
     playlist_text = "🎧 <b>ПЛЕЙЛИСТ</b> 🎧\n\n"
     
-    for i, (song_id, artist, title, url) in enumerate(songs, 1):
+    for i, (song_id, artist, title, url, artwork) in enumerate(songs, 1):
         playlist_text += f"{i}. <b>{artist} - {title}</b>\n"
         if url:
             playlist_text += f"🔗 {shorten_url(url)}\n"
@@ -218,7 +240,7 @@ async def help_button(message: types.Message, state: FSMContext):
         "📚 <b>Как пользоваться:</b>\n\n"
         "<b>➕ Добавить песню:</b>\n"
         "Выбери один из способов:\n"
-        "• 🔍 <b>Поиск iTunes</b> — напиши название, бот найдёт сам\n"
+        "• 🔍 <b>Поиск</b> — напиши название, бот найдёт сам\n"
         "• ✍️ <b>Ручной ввод</b> — отправь ссылку и название\n\n"
         "<b>🎵 Плейлист:</b>\n"
         "• Показать все добавленные песни\n\n"
@@ -236,13 +258,12 @@ async def start_add_song(message: types.Message, state: FSMContext):
     
     await message.answer(
         "📎 <b>Выбери способ добавления:</b>\n\n"
-        "🔍 <b>Поиск iTunes</b> — напиши название песни, бот найдёт её автоматически\n\n"
+        "🔍 <b>Поиск</b> — напиши название песни, бот найдёт её автоматически\n\n"
         "✍️ <b>Ручной ввод</b> — отправь ссылку и введи название вручную\n\n",
         reply_markup=get_add_method_keyboard(),
         parse_mode="HTML"
     )
 
-# ===== ОБРАБОТЧИК ВЫБОРА СПОСОБА =====
 @dp.message(SongState.choosing_method)
 async def process_method_choice(message: types.Message, state: FSMContext):
     if message.text == "🔙 Назад":
@@ -253,10 +274,10 @@ async def process_method_choice(message: types.Message, state: FSMContext):
         )
         return
     
-    if message.text == "🔍 Поиск iTunes":
-        await state.set_state(SongState.waiting_for_itunes_query)
+    if message.text == " Поиск":
+        await state.set_state(SongState.waiting_for_search_query)
         await message.answer(
-            "🔍 <b>Поиск через iTunes</b>\n\n"
+            "🔍 <b>Поиск песни</b>\n\n"
             "Напиши название песни или исполнителя:\n",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
@@ -277,16 +298,14 @@ async def process_method_choice(message: types.Message, state: FSMContext):
         )
         return
     
-    # Если пользователь написал что-то другое
     await message.answer(
         "❓ Не понимаю выбор. Используй кнопки ниже:",
         reply_markup=get_add_method_keyboard()
     )
 
-# ===== ОБРАБОТЧИК ПОИСКА ITUNES =====
-@dp.message(SongState.waiting_for_itunes_query)
-async def process_itunes_query(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Назад":
+@dp.message(SongState.waiting_for_search_query)
+async def process_search_query(message: types.Message, state: FSMContext):
+    if message.text == " Назад":
         await state.clear()
         await message.answer(
             "❌ Добавление отменено",
@@ -294,30 +313,25 @@ async def process_itunes_query(message: types.Message, state: FSMContext):
         )
         return
     
-    await message.answer(f"🔍 Ищу.. ")
+    await message.answer(f"🔍 Ищу <b>{message.text}</b>... Подожди секунду.")
     
     results = await search_deezer(message.text)
     
     if results:
-        user_temp_data[message.from_user.id] = {'itunes_results': results}
+        user_temp_data[message.from_user.id] = {'search_results': results}
         
-        results_text = "🎵 <b>Нашёл такие песни:</b>\n\n"
-        for i, track in enumerate(results, 1):
-            results_text += f"<b>{i}.</b> {track['artist']} - {track['title']}\n"
+        results_text = f"🎵 <b>Нашёл {len(results)} песен:</b>\n\nВыбери нужную:"
         
-        results_text += f"\nНапиши <b>номер песни</b> (1-{len(results)}), которую хочешь добавить:\n"
-        results_text += "Или нажми <b>Назад</b>"
+        keyboard = get_search_results_keyboard(results)
         
         await message.answer(
             results_text,
-            reply_markup=get_cancel_keyboard(),
+            reply_markup=keyboard,
             parse_mode="HTML"
         )
-        
-        await state.set_state(SongState.choosing_itunes_result)
     else:
         await message.answer(
-            "❌ Ничего не найдено \n\n"
+            "❌ Ничего не найдено.\n\n"
             "Попробуй:\n"
             "• Написать по-другому\n"
             "• Выбрать ✍️ Ручной ввод\n\n",
@@ -325,54 +339,54 @@ async def process_itunes_query(message: types.Message, state: FSMContext):
             parse_mode="HTML"
         )
 
-# ===== ОБРАБОТЧИК ВЫБОРА РЕЗУЛЬТАТА ITUNES =====
-@dp.message(SongState.choosing_itunes_result)
-async def choose_itunes_result(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Назад":
+# ===== INLINE КНОПКИ ВЫБОРА ПЕСНИ =====
+@dp.callback_query(lambda c: c.data.startswith('select_track_'))
+async def select_track(callback: types.CallbackQuery, state: FSMContext):
+    track_index = int(callback.data.split('_')[2])
+    
+    temp_data = user_temp_data.get(callback.from_user.id, {})
+    results = temp_data.get('search_results', [])
+    
+    if 0 <= track_index < len(results):
+        track = results[track_index]
+        
+        add_song_to_db(
+            track['artist'],
+            track['title'],
+            track['url'],
+            track.get('artwork', '')
+        )
+        
+        if callback.from_user.id in user_temp_data:
+            del user_temp_data[callback.from_user.id]
+        
         await state.clear()
-        if message.from_user.id in user_temp_data:
-            del user_temp_data[message.from_user.id]
-        await message.answer(
-            "❌ Добавление отменено",
+        
+        await callback.message.edit_text(
+            f"✅ <b>Песня добавлена!</b>\n\n"
+            f"🎵 <b>{track['artist']} - {track['title']}</b>\n"
+            f"🔗 {shorten_url(track['url'])}",
+            parse_mode="HTML",
             reply_markup=get_main_keyboard()
         )
-        return
     
-    try:
-        choice = int(message.text) - 1
-        
-        temp_data = user_temp_data.get(message.from_user.id, {})
-        results = temp_data.get('itunes_results', [])
-        
-        if 0 <= choice < len(results):
-            track = results[choice]
-            
-            add_song_to_db(track['artist'], track['title'], track['url'])
-            
-            if message.from_user.id in user_temp_data:
-                del user_temp_data[message.from_user.id]
-            
-            await state.clear()
-            await message.answer(
-                f"✅ <b>Песня добавлена!</b>\n\n"
-                f"🎵 <b>{track['artist']} - {track['title']}</b>\n"
-                f"🔗 {shorten_url(track['url'])}",
-                reply_markup=get_main_keyboard(),
-                parse_mode="HTML"
-            )
-            return
-    except ValueError:
-        pass
-    
-    await message.answer(
-        f"❌ Неверный выбор.\n\n"
-        f"Напиши номер песни (1-{len(user_temp_data.get(message.from_user.id, {}).get('itunes_results', []))})\n"
-        f"Или нажми <b>Назад</b>",
-        reply_markup=get_cancel_keyboard(),
-        parse_mode="HTML"
-    )
+    await callback.answer()
 
-# ===== РУЧНОЙ ВВОД: ОЖИДАНИЕ ССЫЛКИ =====
+@dp.callback_query(lambda c: c.data == 'cancel_search')
+async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id in user_temp_data:
+        del user_temp_data[callback.from_user.id]
+    
+    await state.clear()
+    
+    await callback.message.edit_text(
+        "❌ Поиск отменён",
+        reply_markup=get_main_keyboard()
+    )
+    
+    await callback.answer()
+
+# ===== РУЧНОЙ ВВОД =====
 @dp.message(SongState.waiting_for_link)
 async def process_link(message: types.Message, state: FSMContext):
     if message.text == "🔙 Назад":
@@ -407,7 +421,6 @@ async def process_link(message: types.Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-# ===== РУЧНОЙ ВВОД: ОЖИДАНИЕ НАЗВАНИЯ =====
 @dp.message(SongState.waiting_for_title)
 async def process_title(message: types.Message, state: FSMContext):
     if message.text == "🔙 Назад":
@@ -438,7 +451,7 @@ async def process_title(message: types.Message, state: FSMContext):
     temp_data = user_temp_data.get(message.from_user.id, {})
     url = temp_data.get('url', '')
     
-    add_song_to_db(artist, title, url)
+    add_song_to_db(artist, title, url, '')
     
     if message.from_user.id in user_temp_data:
         del user_temp_data[message.from_user.id]
@@ -448,7 +461,7 @@ async def process_title(message: types.Message, state: FSMContext):
     await message.answer(
         f"✅ <b>Песня добавлена!</b>\n\n"
         f"🎵 <b>{artist} - {title}</b>\n"
-        f"🔗 {shorten_url(url) if url else 'Без ссылки'}",
+        f" {shorten_url(url) if url else 'Без ссылки'}",
         reply_markup=get_main_keyboard(),
         parse_mode="HTML"
     )
@@ -469,7 +482,7 @@ async def start_delete_song(message: types.Message, state: FSMContext):
     
     playlist_text = "🎧 <b>ПЛЕЙЛИСТ</b> 🎧\n\n"
     
-    for i, (song_id, artist, title, url) in enumerate(songs, 1):
+    for i, (song_id, artist, title, url, artwork) in enumerate(songs, 1):
         playlist_text += f"{i}. <b>{artist} - {title}</b>\n"
         if url:
             playlist_text += f"   🔗 {shorten_url(url)}\n"
@@ -512,13 +525,12 @@ async def process_delete(message: types.Message, state: FSMContext):
         
         await state.clear()
         await message.answer(
-            f"🗑 Песня #{list_number} удалена!",
+            f" Песня #{list_number} удалена!",
             reply_markup=get_main_keyboard()
         )
     except ValueError:
         await message.answer(
-            "❌ Напиши номер песни (число)!\n\n"
-            "Или нажми <b>Назад</b>",
+            "❌ Напиши номер песни (число)!\n\n",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -548,7 +560,7 @@ async def cmd_export(message: types.Message, state: FSMContext):
         return
     
     csv_content = "Artist,Title\n"
-    for song_id, artist, title, url in songs:
+    for song_id, artist, title, url, artwork in songs:
         artist_clean = artist.replace(",", " ")
         title_clean = title.replace(",", " ")
         csv_content += f"{artist_clean},{title_clean}\n"
@@ -557,7 +569,7 @@ async def cmd_export(message: types.Message, state: FSMContext):
     csv_file.name = "playlist_for_yandex.csv"
     
     txt_content = ""
-    for song_id, artist, title, url in songs:
+    for song_id, artist, title, url, artwork in songs:
         txt_content += f"{artist} - {title}\n"
     
     txt_file = io.BytesIO(txt_content.encode('utf-8'))
@@ -565,7 +577,7 @@ async def cmd_export(message: types.Message, state: FSMContext):
     
     full_content = "🎧 ПЛЕЙЛИСТ\n"
     full_content += "=" * 50 + "\n\n"
-    for i, (song_id, artist, title, url) in enumerate(songs, 1):
+    for i, (song_id, artist, title, url, artwork) in enumerate(songs, 1):
         full_content += f"{i}. {artist} - {title}\n"
         full_content += f"   {url}\n\n"
     
@@ -597,7 +609,7 @@ async def cmd_export(message: types.Message, state: FSMContext):
             file=txt_file.getvalue(),
             filename=txt_file.name
         ),
-        caption="📝 Простой список песен"
+        caption=" Простой список песен"
     )
     
     await message.answer_document(
@@ -634,7 +646,7 @@ async def cmd_export(message: types.Message, state: FSMContext):
 
 # ===== ЗАПУСК БОТА =====
 async def main():
-    print("🎵 Бот с ручным вводом запущен!")
+    print(" Бот с ручным вводом запущен!")
     print("🎧 Готов добавлять песни!")
     init_db()
     await bot.delete_webhook(drop_pending_updates=True)
@@ -644,4 +656,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("👋 Бот остановлен.")
+        print(" Бот остановлен.")
