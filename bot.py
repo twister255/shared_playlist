@@ -17,47 +17,6 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-async def get_vk_track_info(url):
-    """Получает информацию о треке из ВК"""
-    # Токен ВК (замени на свой!)
-    VK_TOKEN = "vk1.a.ylsasimFIVmSwgaxTVyAwV8dDmJZPe5MJKpzWhvEIyGcS9fOMfRh-Bt6DrM4RD8jsYUGypFD1quPICP-f3pfdhM2eRE5bpB2SzvUQiC3cc7LMgQDNOozYQudEpnGyX8GbnOJ53FGbQBicdHtWQccS1SdHWCyGNjxnjUmsIQwPlPchEGgBru9uwtsUCnMzJdm6_NZxekRJzNAd2Sdhu9qoQ"
-    
-    async with aiohttp.ClientSession() as session:
-        # Извлекаем owner_id и audio_id из ссылки
-        # Пример: https://vk.com/audio472117016_456240487
-        parts = url.split('/audio')
-        if len(parts) < 2:
-            return None
-        
-        audio_params = parts[1].split('_')
-        if len(audio_params) < 2:
-            return None
-        
-        owner_id = audio_params[0]
-        audio_id = audio_params[1].split('?')[0]  # Убираем лишние параметры
-        
-        # Делаем запрос к VK API
-        params = {
-            'v': '5.131',
-            'access_token': VK_TOKEN,
-            'audio_ids': f'{owner_id}_{audio_id}'
-        }
-        
-        async with session.get(
-            'https://api.vk.com/method/audio.getById',
-            params=params
-        ) as response:
-            if response.status == 200:
-                data = await response.json()
-                if 'response' in data and len(data['response']) > 0:
-                    track = data['response'][0]
-                    return {
-                        'artist': track.get('artist', ''),
-                        'title': track.get('title', ''),
-                        'url': track.get('url', '')
-                    }
-    return None
-
 # ===== СОСТОЯНИЯ =====
 class SongState(StatesGroup):
     waiting_for_link = State()
