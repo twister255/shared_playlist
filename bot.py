@@ -408,7 +408,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         "• Добавлять песни по ссылке\n"
         "• Показывать общий плейлист\n"
         "• Удалять песни из плейлиста\n\n"
-        " <b>Используй кнопки ниже:</b>",
+        "👇 <b>Используй кнопки ниже:</b>",
         reply_markup=get_main_keyboard(),
         parse_mode="HTML"
     )
