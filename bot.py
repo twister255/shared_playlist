@@ -293,7 +293,6 @@ async def process_search_query(message: types.Message, state: FSMContext):
         await message.answer("❌ Отменено", reply_markup=get_main_keyboard())
         return
     
-    await message.answer(f"🔍 Ищу <b>{text}</b>... Подожди секунду.")
     results = await search_deezer(text)
     
     if results:
