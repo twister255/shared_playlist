@@ -258,7 +258,7 @@ async def start_add_song(message: types.Message, state: FSMContext):
     
     await message.answer(
         "📎 <b>Выбери способ добавления:</b>\n\n"
-        "🔍 <b>Поиск</b> — напиши название песни, бот найдёт её автоматически\n\n"
+        "🔍 <b>Поиск в iTunes</b> — напиши название песни, бот найдёт её автоматически\n\n"
         "✍️ <b>Ручной ввод</b> — отправь ссылку и введи название вручную\n\n",
         reply_markup=get_add_method_keyboard(),
         parse_mode="HTML"
