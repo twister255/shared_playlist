@@ -117,7 +117,7 @@ user_temp_data = {}
 async def get_vk_track_info(url):
     """Получает информацию о треке из ВК"""
     # Токен ВК (замени на свой!)
-    VK_TOKEN = "твой_токен_вк"
+    VK_TOKEN = vk1.a.ylsasimFIVmSwgaxTVyAwV8dDmJZPe5MJKpzWhvEIyGcS9fOMfRh-Bt6DrM4RD8jsYUGypFD1quPICP-f3pfdhM2eRE5bpB2SzvUQiC3cc7LMgQDNOozYQudEpnGyX8GbnOJ53FGbQBicdHtWQccS1SdHWCyGNjxnjUmsIQwPlPchEGgBru9uwtsUCnMzJdm6_NZxekRJzNAd2Sdhu9qoQ
     
     async with aiohttp.ClientSession() as session:
         # Извлекаем owner_id и audio_id из ссылки
