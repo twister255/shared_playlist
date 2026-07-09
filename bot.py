@@ -124,41 +124,41 @@ def is_music_link(text):
             return True
     return False
 
-async def search_itunes(query):
-    """Ищет песню в iTunes"""
+async def search_deezer(query):
+    """Ищет песню в Deezer"""
     try:
         async with aiohttp.ClientSession() as session:
+            # Deezer API не требует токенов!
             params = {
-                'term': query,
-                'limit': 5,
-                'media': 'music',
-                'entity': 'song'
+                'q': query,
+                'limit': 5
             }
             
             async with session.get(
-                'https://itunes.apple.com/search',
+                'https://api.deezer.com/search',
                 params=params,
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    results = data.get('results', [])
+                    results = data.get('data', [])
                     
                     if results:
                         return [
                             {
-                                'artist': track.get('artistName', 'Неизвестный'),
-                                'title': track.get('trackName', 'Неизвестно'),
-                                'url': track.get('trackViewUrl', ''),
-                                'preview': track.get('previewUrl', ''),
-                                'artwork': track.get('artworkUrl100', '').replace('100x100', '600x600')
+                                'artist': track.get('artist', {}).get('name', 'Неизвестный'),
+                                'title': track.get('title', 'Неизвестно'),
+                                'url': track.get('link', ''),
+                                'preview': track.get('preview', ''),
+                                'artwork': track.get('album', {}).get('cover_big', '')
                             }
                             for track in results
                         ]
         return []
     except Exception as e:
-        print(f"Ошибка поиска iTunes: {e}")
+        print(f"Ошибка поиска Deezer: {e}")
         return []
+
 
 # ===== ХРАНИЛИЩЕ ВРЕМЕННЫХ ДАННЫХ =====
 user_temp_data = {}
@@ -296,7 +296,7 @@ async def process_itunes_query(message: types.Message, state: FSMContext):
     
     await message.answer(f"🔍 Ищу.. ")
     
-    results = await search_itunes(message.text)
+    results = await search_deezer(message.text)
     
     if results:
         user_temp_data[message.from_user.id] = {'itunes_results': results}
@@ -317,7 +317,7 @@ async def process_itunes_query(message: types.Message, state: FSMContext):
         await state.set_state(SongState.choosing_itunes_result)
     else:
         await message.answer(
-            "❌ Ничего не найдено в iTunes.\n\n"
+            "❌ Ничего не найдено \n\n"
             "Попробуй:\n"
             "• Написать по-другому\n"
             "• Выбрать ✍️ Ручной ввод\n\n",
