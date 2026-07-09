@@ -1,4 +1,5 @@
 import os
+import aiohttp
 import asyncio
 import sqlite3
 import re
@@ -113,6 +114,46 @@ def is_music_link(text):
 user_temp_data = {}
 
 # ===== ОБРАБОТЧИКИ =====
+async def get_vk_track_info(url):
+    """Получает информацию о треке из ВК"""
+    # Токен ВК (замени на свой!)
+    VK_TOKEN = "твой_токен_вк"
+    
+    async with aiohttp.ClientSession() as session:
+        # Извлекаем owner_id и audio_id из ссылки
+        # Пример: https://vk.com/audio472117016_456240487
+        parts = url.split('/audio')
+        if len(parts) < 2:
+            return None
+        
+        audio_params = parts[1].split('_')
+        if len(audio_params) < 2:
+            return None
+        
+        owner_id = audio_params[0]
+        audio_id = audio_params[1].split('?')[0]  # Убираем лишние параметры
+        
+        # Делаем запрос к VK API
+        params = {
+            'v': '5.131',
+            'access_token': VK_TOKEN,
+            'audio_ids': f'{owner_id}_{audio_id}'
+        }
+        
+        async with session.get(
+            'https://api.vk.com/method/audio.getById',
+            params=params
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                if 'response' in data and len(data['response']) > 0:
+                    track = data['response'][0]
+                    return {
+                        'artist': track.get('artist', ''),
+                        'title': track.get('title', ''),
+                        'url': track.get('url', '')
+                    }
+    return None
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -212,19 +253,46 @@ async def process_link(message: types.Message, state: FSMContext):
     if not is_music_link(text):
         await message.answer(
             "❌ Это не похоже на ссылку на музыку!\n\n"
-            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n",
+            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n"
+            "Или нажми на кнопку <b>Назад</b>",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
         return
     
+    # 🔥 Если это ссылка из ВК - пробуем автоматически получить инфо
+    if 'vk.com' in text or 'vk.ru' in text:
+        await message.answer("🔍 Распознаю трек из ВК...")
+        
+        vk_info = await get_vk_track_info(text)
+        
+        if vk_info and vk_info['artist'] and vk_info['title']:
+            # Автоматически добавляем!
+            artist = vk_info['artist']
+            title = vk_info['title']
+            
+            add_song_to_db(artist, title, text)
+            
+            await state.clear()
+            await message.answer(
+                f"✅ <b>Песня добавлена автоматически!</b>\n\n"
+                f"🎵 <b>{artist} - {title}</b>\n"
+                f"🔗 {shorten_url(text)}",
+                reply_markup=get_main_keyboard(),
+                parse_mode="HTML"
+            )
+            return
+    
+    # Для других ссылок или если не удалось распознать
     user_temp_data[message.from_user.id] = {'url': text}
     
     await state.set_state(SongState.waiting_for_title)
     await message.answer(
         "✅ Ссылка принята!\n\n"
         "Теперь напиши <b>название песни</b> в формате:\n"
-        "<i>Исполнитель - Название</i>\n\n",
+        "<i>Исполнитель - Название</i>\n\n"
+        "Например: Макс Корж - Жить в кайф\n\n"
+        "Или нажми на кнопку <b>Назад</b>",
         reply_markup=get_cancel_keyboard(),
         parse_mode="HTML"
     )
