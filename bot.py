@@ -212,46 +212,20 @@ async def process_link(message: types.Message, state: FSMContext):
     if not is_music_link(text):
         await message.answer(
             "❌ Это не похоже на ссылку на музыку!\n\n"
-            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n"
-            "Или нажми на кнопку <b>Назад</b>",
+            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
         return
     
-    # 🔥 Если это ссылка из ВК - пробуем автоматически получить инфо
-    if 'vk.com' in text or 'vk.ru' in text:
-        await message.answer("🔍 Распознаю трек из ВК...")
-        
-        vk_info = await get_vk_track_info(text)
-        
-        if vk_info and vk_info['artist'] and vk_info['title']:
-            # Автоматически добавляем!
-            artist = vk_info['artist']
-            title = vk_info['title']
-            
-            add_song_to_db(artist, title, text)
-            
-            await state.clear()
-            await message.answer(
-                f"✅ <b>Песня добавлена автоматически!</b>\n\n"
-                f"🎵 <b>{artist} - {title}</b>\n"
-                f"🔗 {shorten_url(text)}",
-                reply_markup=get_main_keyboard(),
-                parse_mode="HTML"
-            )
-            return
-    
-    # Для других ссылок или если не удалось распознать
+    # Просто сохраняем ссылку и просим ввести название
     user_temp_data[message.from_user.id] = {'url': text}
     
     await state.set_state(SongState.waiting_for_title)
     await message.answer(
         "✅ Ссылка принята!\n\n"
         "Теперь напиши <b>название песни</b> в формате:\n"
-        "<i>Исполнитель - Название</i>\n\n"
-        "Например: Макс Корж - Жить в кайф\n\n"
-        "Или нажми на кнопку <b>Назад</b>",
+        "<i>Исполнитель - Название</i>\n\n",
         reply_markup=get_cancel_keyboard(),
         parse_mode="HTML"
     )
