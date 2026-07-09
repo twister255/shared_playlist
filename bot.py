@@ -22,6 +22,8 @@ class SongState(StatesGroup):
     waiting_for_link = State()
     waiting_for_title = State()
     waiting_for_delete_id = State()
+    searching_itunes = State()  # Новое состояние для поиска
+    choosing_itunes_result = State()  # Выбор результата
 
 # ===== БАЗА ДАННЫХ =====
 def init_db():
@@ -110,6 +112,37 @@ def is_music_link(text):
             return True
     return False
 
+async def search_itunes(query):
+    """Ищет песню в iTunes"""
+    async with aiohttp.ClientSession() as session:
+        params = {
+            'term': query,
+            'limit': 5,  # Количество результатов
+            'media': 'music',
+            'entity': 'song'
+        }
+        
+        async with session.get(
+            'https://itunes.apple.com/search',
+            params=params
+        ) as response:
+            if response.status == 200:
+                data = await response.json()
+                results = data.get('results', [])
+                
+                if results:
+                    return [
+                        {
+                            'artist': track.get('artistName', ''),
+                            'title': track.get('trackName', ''),
+                            'url': track.get('trackViewUrl', ''),
+                            'preview': track.get('previewUrl', ''),
+                            'artwork': track.get('artworkUrl100', '').replace('100x100', '600x600')
+                        }
+                        for track in results
+                    ]
+    return []
+
 # ===== ХРАНИЛИЩЕ ВРЕМЕННЫХ ДАННЫХ =====
 user_temp_data = {}
 
@@ -185,12 +218,13 @@ async def start_add_song(message: types.Message, state: FSMContext):
     await state.set_state(SongState.waiting_for_link)
     
     await message.answer(
-        "📎 <b>Отправь ссылку на песню</b>\n\n"
-        "Поддерживаются:\n"
-        "• ВКонтакте (vk.com, vk.ru)\n"
-        "• Яндекс.Музыка (music.yandex.ru)\n"
-        "• YouTube (youtube.com)\n"
-        "• Spotify, Deezer, Apple Music\n\n",
+        "📎 <b>Выбери способ добавления:</b>\n\n"
+        "<b>1. По ссылке</b>\n"
+        "Отправь ссылку на песню (ВК, Яндекс.Музыка, YouTube и т.д.)\n\n"
+        "<b>2. По названию (iTunes)</b>\n"
+        "Напиши название песни: Исполнитель - Название\n"
+        "Бот сам найдёт её в iTunes\n\n"
+        "Или нажми на кнопку <b>Назад</b>",
         reply_markup=get_cancel_keyboard(),
         parse_mode="HTML"
     )
@@ -226,6 +260,120 @@ async def process_link(message: types.Message, state: FSMContext):
         "✅ Ссылка принята!\n\n"
         "Теперь напиши <b>название песни</b> в формате:\n"
         "<i>Исполнитель - Название</i>\n\n",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="HTML"
+    )
+
+@dp.message(SongState.waiting_for_link)
+async def process_link(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Назад":
+        await state.clear()
+        if message.from_user.id in user_temp_data:
+            del user_temp_data[message.from_user.id]
+        await message.answer(
+            "❌ Добавление отменено",
+            reply_markup=get_main_keyboard()
+        )
+        return
+    
+    text = message.text
+    
+    # Проверяем, не название ли это песни (если нет ссылки)
+    if not is_music_link(text):
+        # Это название песни - ищем в iTunes!
+        await state.set_state(SongState.searching_itunes)
+        await message.answer(f"🔍 Ищу <b>{text}</b> в iTunes...")
+        
+        results = await search_itunes(text)
+        
+        if results:
+            # Сохраняем результаты
+            user_temp_data[message.from_user.id] = {'itunes_results': results}
+            
+            # Показываем первый результат
+            track = results[0]
+            await message.answer(
+                f"✅ <b>Нашёл!</b>\n\n"
+                f"🎵 <b>{track['artist']} - {track['title']}</b>\n"
+                f"🔗 {track['url']}\n\n"
+                f"Добавить эту песню?\n"
+                f"Или напиши номер другой песни (1-{len(results)}), или <b>Назад</b>",
+                reply_markup=get_cancel_keyboard(),
+                parse_mode="HTML"
+            )
+            
+            await state.set_state(SongState.choosing_itunes_result)
+            return
+        else:
+            await message.answer(
+                "❌ Ничего не найдено в iTunes.\n\n"
+                "Попробуй:\n"
+                "• Отправить ссылку на песню\n"
+                "• Или напиши другое название\n\n",
+                reply_markup=get_cancel_keyboard(),
+                parse_mode="HTML"
+            )
+            await state.set_state(SongState.waiting_for_link)
+            return
+    
+    # Это ссылка - обрабатываем как раньше
+    user_temp_data[message.from_user.id] = {'url': text}
+    
+    await state.set_state(SongState.waiting_for_title)
+    await message.answer(
+        "✅ Ссылка принята!\n\n"
+        "Теперь напиши <b>название песни</b> в формате:\n"
+        "<i>Исполнитель - Название</i>\n\n",
+        reply_markup=get_cancel_keyboard(),
+        parse_mode="HTML"
+    )
+
+@dp.message(SongState.choosing_itunes_result)
+async def choose_itunes_result(message: types.Message, state: FSMContext):
+    if message.text == "🔙 Назад":
+        await state.clear()
+        if message.from_user.id in user_temp_data:
+            del user_temp_data[message.from_user.id]
+        await message.answer(
+            "❌ Добавление отменено",
+            reply_markup=get_main_keyboard()
+        )
+        return
+    
+    # Проверяем, не ввёл ли пользователь номер песни
+    try:
+        choice = int(message.text) - 1  # Нумерация с 1, индекс с 0
+        
+        temp_data = user_temp_data.get(message.from_user.id, {})
+        results = temp_data.get('itunes_results', [])
+        
+        if 0 <= choice < len(results):
+            track = results[choice]
+            
+            # Добавляем в базу
+            add_song_to_db(track['artist'], track['title'], track['url'])
+            
+            # Очищаем данные
+            if message.from_user.id in user_temp_data:
+                del user_temp_data[message.from_user.id]
+            
+            await state.clear()
+            await message.answer(
+                f"✅ <b>Песня добавлена!</b>\n\n"
+                f"🎵 <b>{track['artist']} - {track['title']}</b>\n"
+                f"🔗 {shorten_url(track['url'])}",
+                reply_markup=get_main_keyboard(),
+                parse_mode="HTML"
+            )
+            return
+    except ValueError:
+        pass  # Не число
+    
+    # Если не число или неверный номер
+    await message.answer(
+        f"❌ Неверный выбор.\n\n"
+        f"Напиши номер песни (1-{len(user_temp_data.get(message.from_user.id, {}).get('itunes_results', []))})\n"
+        f"Или нажми <b>Назад</b>",
         reply_markup=get_cancel_keyboard(),
         parse_mode="HTML"
     )
