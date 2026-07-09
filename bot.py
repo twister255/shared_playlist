@@ -190,9 +190,6 @@ async def start_add_song(message: types.Message, state: FSMContext):
         "📎 <b>Выбери способ добавления:</b>\n\n"
         "<b>1. По ссылке</b>\n"
         "Отправь ссылку на песню (ВК, Яндекс.Музыка, YouTube и т.д.)\n\n"
-        "<b>2. По названию (iTunes)</b>\n"
-        "Напиши название песни: Исполнитель - Название\n"
-        "Бот сам найдёт её в iTunes\n\n"
         "Или нажми на кнопку <b>Назад</b>",
         reply_markup=get_cancel_keyboard(),
         parse_mode="HTML"
