@@ -243,41 +243,6 @@ async def process_link(message: types.Message, state: FSMContext):
     
     text = message.text
     
-    if not is_music_link(text):
-        await message.answer(
-            "❌ Это не похоже на ссылку на музыку!\n\n"
-            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n",
-            reply_markup=get_cancel_keyboard(),
-            parse_mode="HTML"
-        )
-        return
-    
-    # Просто сохраняем ссылку и просим ввести название
-    user_temp_data[message.from_user.id] = {'url': text}
-    
-    await state.set_state(SongState.waiting_for_title)
-    await message.answer(
-        "✅ Ссылка принята!\n\n"
-        "Теперь напиши <b>название песни</b> в формате:\n"
-        "<i>Исполнитель - Название</i>\n\n",
-        reply_markup=get_cancel_keyboard(),
-        parse_mode="HTML"
-    )
-
-@dp.message(SongState.waiting_for_link)
-async def process_link(message: types.Message, state: FSMContext):
-    if message.text == "🔙 Назад":
-        await state.clear()
-        if message.from_user.id in user_temp_data:
-            del user_temp_data[message.from_user.id]
-        await message.answer(
-            "❌ Добавление отменено",
-            reply_markup=get_main_keyboard()
-        )
-        return
-    
-    text = message.text
-    
     # Проверяем, не название ли это песни (если нет ссылки)
     if not is_music_link(text):
         # Это название песни - ищем в iTunes!
