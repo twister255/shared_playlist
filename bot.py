@@ -68,7 +68,7 @@ def get_main_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🎵 Плейлист")],
-            [KeyboardButton(text=" Добавить песню"), KeyboardButton(text="🗑 Удалить песню")],
+            [KeyboardButton(text="➕ Добавить песню"), KeyboardButton(text=" Удалить песню")],
             [KeyboardButton(text="❓ Помощь")]
         ],
         resize_keyboard=True,
@@ -86,7 +86,7 @@ def get_cancel_keyboard():
 def get_add_method_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🔍 Поиск"), KeyboardButton(text="✍️ Ручной ввод")],
+            [KeyboardButton(text="🔍 Поиск"), KeyboardButton(text="️ Ручной ввод")],
             [KeyboardButton(text="🔙 Назад")]
         ],
         resize_keyboard=True
@@ -100,10 +100,10 @@ def get_search_results_keyboard(results):
         if len(button_text) > 50:
             button_text = button_text[:47] + "..."
         keyboard.inline_keyboard.append([
-            InlineKeyboardButton(text=button_text, callback_data=f"select_track_{i}")
+            InlineKeyboardButton(text=button_text, callback_data=f"select_{i}")
         ])
     keyboard.inline_keyboard.append([
-        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_search")
+        InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")
     ])
     return keyboard
 
@@ -153,8 +153,53 @@ async def search_deezer(query):
 
 user_temp_data = {}
 
-# ===== ГЛАВНЫЕ КНОПКИ МЕНЮ (РАБОТАЮТ В ЛЮБОМ СОСТОЯНИИ) =====
-# Используем "in" чтобы кнопки работали даже если пользователь случайно добавил пробел
+# ===== CALLBACK ОБРАБОТЧИКИ (ДОЛЖНЫ БЫТЬ ПЕРВЫМИ!) =====
+
+@dp.callback_query(F.data.startswith('select_'))
+async def select_track(callback: types.CallbackQuery, state: FSMContext):
+    print(f"🔔 Callback получен: {callback.data}")  # Отладка
+    
+    try:
+        track_index = int(callback.data.split('_')[1])
+        print(f" Индекс трека: {track_index}")
+        
+        temp_data = user_temp_data.get(callback.from_user.id, {})
+        results = temp_data.get('search_results', [])
+        print(f"🔔 Результаты: {len(results)} песен")
+        
+        if 0 <= track_index < len(results):
+            track = results[track_index]
+            print(f"🔔 Добавляем: {track['artist']} - {track['title']}")
+            
+            add_song_to_db(track['artist'], track['title'], track['url'], track.get('artwork', ''))
+            
+            if callback.from_user.id in user_temp_data:
+                del user_temp_data[callback.from_user.id]
+            await state.clear()
+            
+            await callback.message.edit_text(
+                f"✅ <b>Песня добавлена!</b>\n\n <b>{track['artist']} - {track['title']}</b>",
+                parse_mode="HTML",
+                reply_markup=get_main_keyboard()
+            )
+        else:
+            print(f"❌ Индекс {track_index} вне диапазона 0-{len(results)-1}")
+    except Exception as e:
+        print(f"❌ Ошибка в select_track: {e}")
+        await callback.message.answer(f"❌ Ошибка: {e}")
+    
+    await callback.answer()
+
+@dp.callback_query(F.data == 'cancel')
+async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
+    print(f"🔔 Отмена поиска")
+    if callback.from_user.id in user_temp_data:
+        del user_temp_data[callback.from_user.id]
+    await state.clear()
+    await callback.message.edit_text("❌ Поиск отменён", reply_markup=get_main_keyboard())
+    await callback.answer()
+
+# ===== ГЛАВНЫЕ КНОПКИ МЕНЮ =====
 
 @dp.message(lambda msg: msg.text and "Плейлист" in msg.text)
 async def show_playlist_button(message: types.Message, state: FSMContext):
@@ -162,10 +207,10 @@ async def show_playlist_button(message: types.Message, state: FSMContext):
     songs = get_all_songs()
     
     if not songs:
-        await message.answer(" <b>Плейлист пуст!</b>\n\nНажми ➕ Добавить песню.", reply_markup=get_main_keyboard(), parse_mode="HTML")
+        await message.answer("🎵 <b>Плейлист пуст!</b>\n\nНажми ➕ Добавить песню.", reply_markup=get_main_keyboard(), parse_mode="HTML")
         return
     
-    playlist_text = "🎧 <b>ПЛЕЙЛИСТ</b> \n\n"
+    playlist_text = " <b>ПЛЕЙЛИСТ</b> 🎧\n\n"
     for i, (song_id, artist, title, url, artwork) in enumerate(songs, 1):
         playlist_text += f"{i}. <b>{artist} - {title}</b>\n"
         if url:
@@ -178,7 +223,7 @@ async def show_playlist_button(message: types.Message, state: FSMContext):
 async def help_button(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        " <b>Как пользоваться:</b>\n\n"
+        "📚 <b>Как пользоваться:</b>\n\n"
         "<b>➕ Добавить песню:</b>\n"
         "• 🔍 <b>Поиск</b> — напиши название, бот найдёт сам\n"
         "• ✍️ <b>Ручной ввод</b> — отправь ссылку и название\n\n"
@@ -193,7 +238,7 @@ async def help_button(message: types.Message, state: FSMContext):
 async def start_add_song(message: types.Message, state: FSMContext):
     await state.set_state(SongState.choosing_method)
     await message.answer(
-        "📎 <b>Выбери способ добавления:</b>\n\n"
+        " <b>Выбери способ добавления:</b>\n\n"
         "🔍 <b>Поиск</b> — бот найдёт песню сам\n"
         "✍️ <b>Ручной ввод</b> — ссылка и название вручную",
         reply_markup=get_add_method_keyboard(),
@@ -201,6 +246,7 @@ async def start_add_song(message: types.Message, state: FSMContext):
     )
 
 # ===== ОБРАБОТЧИК ВЫБОРА СПОСОБА =====
+
 @dp.message(SongState.choosing_method)
 async def process_method_choice(message: types.Message, state: FSMContext):
     text = message.text or ""
@@ -210,7 +256,6 @@ async def process_method_choice(message: types.Message, state: FSMContext):
         await message.answer("❌ Отменено", reply_markup=get_main_keyboard())
         return
     
-    # Ищем ключевые слова вместо точного совпадения
     if "Поиск" in text:
         await state.set_state(SongState.waiting_for_search_query)
         await message.answer(
@@ -223,7 +268,7 @@ async def process_method_choice(message: types.Message, state: FSMContext):
     if "Ручной" in text:
         await state.set_state(SongState.waiting_for_link)
         await message.answer(
-            "📎 <b>Ручной ввод</b>\n\nОтправь ссылку на песню (ВК, Яндекс, YouTube...)",
+            " <b>Ручной ввод</b>\n\nОтправь ссылку на песню (ВК, Яндекс, YouTube...)",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -232,6 +277,7 @@ async def process_method_choice(message: types.Message, state: FSMContext):
     await message.answer("❓ Не понимаю выбор. Используй кнопки:", reply_markup=get_add_method_keyboard())
 
 # ===== ПОИСК ЧЕРЕЗ DEEZER =====
+
 @dp.message(SongState.waiting_for_search_query)
 async def process_search_query(message: types.Message, state: FSMContext):
     text = message.text or ""
@@ -249,39 +295,10 @@ async def process_search_query(message: types.Message, state: FSMContext):
         keyboard = get_search_results_keyboard(results)
         await message.answer(results_text, reply_markup=keyboard, parse_mode="HTML")
     else:
-        await message.answer("❌ Ничего не найдено. Попробуй написать по-другому.", reply_markup=get_cancel_keyboard())
-
-# ===== INLINE КНОПКИ (ВЫБОР ПЕСНИ) =====
-@dp.callback_query(lambda c: c.data.startswith('select_track_'))
-async def select_track(callback: types.CallbackQuery, state: FSMContext):
-    track_index = int(callback.data.split('_')[2])
-    temp_data = user_temp_data.get(callback.from_user.id, {})
-    results = temp_data.get('search_results', [])
-    
-    if 0 <= track_index < len(results):
-        track = results[track_index]
-        add_song_to_db(track['artist'], track['title'], track['url'], track.get('artwork', ''))
-        
-        if callback.from_user.id in user_temp_data:
-            del user_temp_data[callback.from_user.id]
-        await state.clear()
-        
-        await callback.message.edit_text(
-            f"✅ <b>Песня добавлена!</b>\n\n🎵 <b>{track['artist']} - {track['title']}</b>",
-            parse_mode="HTML",
-            reply_markup=get_main_keyboard()
-        )
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == 'cancel_search')
-async def cancel_search(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id in user_temp_data:
-        del user_temp_data[callback.from_user.id]
-    await state.clear()
-    await callback.message.edit_text("❌ Поиск отменён", reply_markup=get_main_keyboard())
-    await callback.answer()
+        await message.answer(" Ничего не найдено. Попробуй написать по-другому.", reply_markup=get_cancel_keyboard())
 
 # ===== РУЧНОЙ ВВОД =====
+
 @dp.message(SongState.waiting_for_link)
 async def process_link(message: types.Message, state: FSMContext):
     text = message.text or ""
@@ -323,12 +340,13 @@ async def process_title(message: types.Message, state: FSMContext):
     await message.answer(f"✅ <b>Песня добавлена!</b>\n\n🎵 <b>{artist} - {title}</b>", reply_markup=get_main_keyboard(), parse_mode="HTML")
 
 # ===== УДАЛЕНИЕ ПЕСНИ =====
+
 @dp.message(lambda msg: msg.text and "Удалить" in msg.text)
 async def start_delete_song(message: types.Message, state: FSMContext):
     await state.clear()
     songs = get_all_songs()
     if not songs:
-        await message.answer("🎵 Плейлист пуст!", reply_markup=get_main_keyboard())
+        await message.answer(" Плейлист пуст!", reply_markup=get_main_keyboard())
         return
     
     playlist_text = " <b>ПЛЕЙЛИСТ</b> 🎧\n\n"
@@ -345,7 +363,7 @@ async def start_delete_song(message: types.Message, state: FSMContext):
 async def process_delete(message: types.Message, state: FSMContext):
     if "Назад" in (message.text or ""):
         await state.clear()
-        await message.answer(" Отменено", reply_markup=get_main_keyboard())
+        await message.answer("❌ Отменено", reply_markup=get_main_keyboard())
         return
     
     try:
@@ -362,6 +380,7 @@ async def process_delete(message: types.Message, state: FSMContext):
         await message.answer("❌ Напиши номер песни (число)!", reply_markup=get_cancel_keyboard())
 
 # ===== ГЛОБАЛЬНАЯ КНОПКА НАЗАД =====
+
 @dp.message(lambda msg: msg.text and msg.text == "🔙 Назад")
 async def cancel_action(message: types.Message, state: FSMContext):
     await state.clear()
@@ -369,6 +388,7 @@ async def cancel_action(message: types.Message, state: FSMContext):
     await message.answer("❌ Действие отменено", reply_markup=get_main_keyboard())
 
 # ===== СТАРТ И ЭКСПОРТ =====
+
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
