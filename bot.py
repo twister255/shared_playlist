@@ -243,52 +243,25 @@ async def process_link(message: types.Message, state: FSMContext):
     
     text = message.text
     
-    # Проверяем, не название ли это песни (если нет ссылки)
     if not is_music_link(text):
-        # Это название песни - ищем в iTunes!
-        await state.set_state(SongState.searching_itunes)
-        await message.answer(f"🔍 Ищу <b>{text}</b> в iTunes...")
-        
-        results = await search_itunes(text)
-        
-        if results:
-            # Сохраняем результаты
-            user_temp_data[message.from_user.id] = {'itunes_results': results}
-            
-            # Показываем первый результат
-            track = results[0]
-            await message.answer(
-                f"✅ <b>Нашёл!</b>\n\n"
-                f"🎵 <b>{track['artist']} - {track['title']}</b>\n"
-                f"🔗 {track['url']}\n\n"
-                f"Добавить эту песню?\n"
-                f"Или напиши номер другой песни (1-{len(results)}), или <b>Назад</b>",
-                reply_markup=get_cancel_keyboard(),
-                parse_mode="HTML"
-            )
-            
-            await state.set_state(SongState.choosing_itunes_result)
-            return
-        else:
-            await message.answer(
-                "❌ Ничего не найдено в iTunes.\n\n"
-                "Попробуй:\n"
-                "• Отправить ссылку на песню\n"
-                "• Или напиши другое название\n\n",
-                reply_markup=get_cancel_keyboard(),
-                parse_mode="HTML"
-            )
-            await state.set_state(SongState.waiting_for_link)
-            return
+        await message.answer(
+            "❌ Это не похоже на ссылку на музыку!\n\n"
+            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n"
+            "Или нажми на кнопку <b>Назад</b>",
+            reply_markup=get_cancel_keyboard(),
+            parse_mode="HTML"
+        )
+        return
     
-    # Это ссылка - обрабатываем как раньше
     user_temp_data[message.from_user.id] = {'url': text}
     
     await state.set_state(SongState.waiting_for_title)
     await message.answer(
         "✅ Ссылка принята!\n\n"
         "Теперь напиши <b>название песни</b> в формате:\n"
-        "<i>Исполнитель - Название</i>\n\n",
+        "<i>Исполнитель - Название</i>\n\n"
+        "Например: Макс Корж - Жить в кайф\n\n"
+        "Или нажми на кнопку <b>Назад</b>",
         reply_markup=get_cancel_keyboard(),
         parse_mode="HTML"
     )
