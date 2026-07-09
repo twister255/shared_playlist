@@ -112,37 +112,6 @@ def is_music_link(text):
             return True
     return False
 
-async def search_itunes(query):
-    """Ищет песню в iTunes"""
-    async with aiohttp.ClientSession() as session:
-        params = {
-            'term': query,
-            'limit': 5,  # Количество результатов
-            'media': 'music',
-            'entity': 'song'
-        }
-        
-        async with session.get(
-            'https://itunes.apple.com/search',
-            params=params
-        ) as response:
-            if response.status == 200:
-                data = await response.json()
-                results = data.get('results', [])
-                
-                if results:
-                    return [
-                        {
-                            'artist': track.get('artistName', ''),
-                            'title': track.get('trackName', ''),
-                            'url': track.get('trackViewUrl', ''),
-                            'preview': track.get('previewUrl', ''),
-                            'artwork': track.get('artworkUrl100', '').replace('100x100', '600x600')
-                        }
-                        for track in results
-                    ]
-    return []
-
 # ===== ХРАНИЛИЩЕ ВРЕМЕННЫХ ДАННЫХ =====
 user_temp_data = {}
 
@@ -246,8 +215,7 @@ async def process_link(message: types.Message, state: FSMContext):
     if not is_music_link(text):
         await message.answer(
             "❌ Это не похоже на ссылку на музыку!\n\n"
-            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n"
-            "Или нажми на кнопку <b>Назад</b>",
+            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -259,9 +227,7 @@ async def process_link(message: types.Message, state: FSMContext):
     await message.answer(
         "✅ Ссылка принята!\n\n"
         "Теперь напиши <b>название песни</b> в формате:\n"
-        "<i>Исполнитель - Название</i>\n\n"
-        "Например: Макс Корж - Жить в кайф\n\n"
-        "Или нажми на кнопку <b>Назад</b>",
+        "<i>Исполнитель - Название</i>\n\n",
         reply_markup=get_cancel_keyboard(),
         parse_mode="HTML"
     )
