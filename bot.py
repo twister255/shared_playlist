@@ -247,8 +247,7 @@ async def start_add_song(message: types.Message, state: FSMContext):
     await message.answer(
         " <b>Выбери способ добавления:</b>\n\n"
         "🔍 <b>Поиск</b> — напиши название песни, бот найдёт её автоматически\n\n"
-        "✍️ <b>Ручной ввод</b> — отправь ссылку и введи название вручную\n\n"
-        "Или нажми <b>Назад</b> для отмены",
+        "✍️ <b>Ручной ввод</b> — отправь ссылку и введи название вручную\n\n",
         reply_markup=get_add_method_keyboard(),
         parse_mode="HTML"
     )
@@ -267,7 +266,7 @@ async def process_method_choice(message: types.Message, state: FSMContext):
     if "Поиск" in text:
         await state.set_state(SongState.waiting_for_search_query)
         await message.answer(
-            "🔍 <b>Поиск песни</b>\n\nНапиши название или исполнителя:\n<i>Например: Макс Корж - Жить в кайф</i>\n\nИли нажми <b>Назад</b>",
+            "🔍 <b>Поиск песни</b>\n\nНапиши название или исполнителя:\n<i>",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -276,7 +275,7 @@ async def process_method_choice(message: types.Message, state: FSMContext):
     if "Ручной" in text:
         await state.set_state(SongState.waiting_for_link)
         await message.answer(
-            "📎 <b>Ручной ввод</b>\n\nОтправь ссылку на песню:\n• ВКонтакте (vk.com, vk.ru)\n• Яндекс.Музыка (music.yandex.ru)\n• YouTube (youtube.com)\n• Spotify, Deezer, Apple Music\n\nИли нажми <b>Назад</b>",
+            "📎 <b>Ручной ввод</b>\n\nОтправь ссылку на песню:\n• ВКонтакте (vk.com, vk.ru)\n• Яндекс.Музыка (music.yandex.ru)\n• YouTube (youtube.com)\n• Spotify, Deezer, Apple Music\n\n",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -403,12 +402,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     if message.from_user.id in user_temp_data: del user_temp_data[message.from_user.id]
     await message.answer(
-        " <b>Привет! Я бот для создания общего плейлиста!</b>\n\n"
+        "🎉 <b>Привет! Я бот для создания общего плейлиста!</b>\n\n"
         "🎧 <b>Что я умею:</b>\n"
-        "• 🔍 Искать песни через Deezer\n"
-        "• ➕ Добавлять песни по ссылке\n"
-        "• 🎵 Показывать общий плейлист\n"
-        "• 🗑 Удалять песни из плейлиста\n\n"
+        "• Искать песни по названию или исполнителю\n"
+        "• Добавлять песни по ссылке\n"
+        "• Показывать общий плейлист\n"
+        "• Удалять песни из плейлиста\n\n"
         " <b>Используй кнопки ниже:</b>",
         reply_markup=get_main_keyboard(),
         parse_mode="HTML"
