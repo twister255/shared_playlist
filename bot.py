@@ -91,7 +91,7 @@ def get_cancel_keyboard():
 def get_add_method_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🔍 Поиск в iTunes"), KeyboardButton(text="✍️ Ручной ввод")],
+            [KeyboardButton(text="🔍 Поиск"), KeyboardButton(text="✍️ Ручной ввод")],
             [KeyboardButton(text="🔙 Назад")]
         ],
         resize_keyboard=True
@@ -178,7 +178,7 @@ async def search_deezer(query):
                         ]
         return []
     except Exception as e:
-        print(f"Ошибка поиска : {e}")
+        print(f"Ошибка поиска Deezer: {e}")
         return []
 
 # ===== ХРАНИЛИЩЕ ВРЕМЕННЫХ ДАННЫХ =====
@@ -194,10 +194,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await message.answer(
         "🎉 <b>Привет! Я бот для создания общего плейлиста!</b>\n\n"
         "🎧 <b>Что я умею:</b>\n"
-        "• Искать песни по названию или исполнителю\n"
-        "• Добавлять песни по ссылке\n"
-        "• Показывать общий плейлист с обложками\n"
-        "• Удалять песни из плейлиста\n\n"
+        "•  Искать песни через Deezer\n"
+        "• ➕ Добавлять песни по ссылке\n"
+        "• 🎵 Показывать общий плейлист с обложками\n"
+        "• 🗑 Удалять песни из плейлиста\n\n"
         "👇 <b>Используй кнопки ниже:</b>",
         reply_markup=get_main_keyboard(),
         parse_mode="HTML"
@@ -240,7 +240,7 @@ async def help_button(message: types.Message, state: FSMContext):
         "📚 <b>Как пользоваться:</b>\n\n"
         "<b>➕ Добавить песню:</b>\n"
         "Выбери один из способов:\n"
-        "• 🔍 <b>Поиск в iTunes</b> — напиши название, бот найдёт сам\n"
+        "• 🔍 <b>Поиск</b> — напиши название, бот найдёт сам\n"
         "• ✍️ <b>Ручной ввод</b> — отправь ссылку и название\n\n"
         "<b>🎵 Плейлист:</b>\n"
         "• Показать все добавленные песни\n\n"
@@ -258,8 +258,9 @@ async def start_add_song(message: types.Message, state: FSMContext):
     
     await message.answer(
         "📎 <b>Выбери способ добавления:</b>\n\n"
-        "🔍 <b>Поиск в iTunes</b> — напиши название песни, бот найдёт её автоматически\n\n"
-        "✍️ <b>Ручной ввод</b> — отправь ссылку и введи название вручную\n\n",
+        "🔍 <b>Поиск</b> — напиши название песни, бот найдёт её автоматически\n\n"
+        "✍️ <b>Ручной ввод</b> — отправь ссылку и введи название вручную\n\n"
+        "Или нажми <b>Назад</b> для отмены",
         reply_markup=get_add_method_keyboard(),
         parse_mode="HTML"
     )
@@ -278,7 +279,9 @@ async def process_method_choice(message: types.Message, state: FSMContext):
         await state.set_state(SongState.waiting_for_search_query)
         await message.answer(
             "🔍 <b>Поиск песни</b>\n\n"
-            "Напиши название песни или исполнителя:\n",
+            "Напиши название песни или исполнителя:\n"
+            "<i>Например: Макс Корж - Жить в кайф</i>\n\n"
+            "Или нажми <b>Назад</b>",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -292,7 +295,8 @@ async def process_method_choice(message: types.Message, state: FSMContext):
             "• ВКонтакте (vk.com, vk.ru)\n"
             "• Яндекс.Музыка (music.yandex.ru)\n"
             "• YouTube (youtube.com)\n"
-            "• Spotify, Deezer, Apple Music\n\n",
+            "• Spotify, Deezer, Apple Music\n\n"
+            "Или нажми <b>Назад</b>",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -334,7 +338,8 @@ async def process_search_query(message: types.Message, state: FSMContext):
             "❌ Ничего не найдено.\n\n"
             "Попробуй:\n"
             "• Написать по-другому\n"
-            "• Выбрать ✍️ Ручной ввод\n\n",
+            "• Выбрать ✍️ Ручной ввод\n\n"
+            "Или нажми <b>Назад</b>",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -404,7 +409,8 @@ async def process_link(message: types.Message, state: FSMContext):
     if not is_music_link(text):
         await message.answer(
             "❌ Это не похоже на ссылку на музыку!\n\n"
-            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n",
+            "Отправь ссылку из ВК, Яндекс.Музыки, YouTube и т.д.\n\n"
+            "Или нажми <b>Назад</b>",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -416,7 +422,8 @@ async def process_link(message: types.Message, state: FSMContext):
     await message.answer(
         "✅ Ссылка принята!\n\n"
         "Теперь напиши <b>название песни</b> в формате:\n"
-        "<i>Исполнитель - Название</i>\n\n",
+        "<i>Исполнитель - Название</i>\n\n"
+        "Или нажми <b>Назад</b>",
         reply_markup=get_cancel_keyboard(),
         parse_mode="HTML"
     )
@@ -438,7 +445,8 @@ async def process_title(message: types.Message, state: FSMContext):
     if " - " not in text:
         await message.answer(
             "❌ Неверный формат!\n\n"
-            "Используй: <b>Исполнитель - Название</b>\n",
+            "Используй: <b>Исполнитель - Название</b>\n"
+            "Или нажми <b>Назад</b>",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
@@ -514,7 +522,8 @@ async def process_delete(message: types.Message, state: FSMContext):
         if list_number < 1 or list_number > len(songs):
             await message.answer(
                 f"❌ Нет песни с номером {list_number}!\n\n"
-                f"В плейлисте всего {len(songs)} песен.\n\n",
+                f"В плейлисте всего {len(songs)} песен.\n\n"
+                "Или нажми <b>Назад</b>",
                 reply_markup=get_cancel_keyboard(),
                 parse_mode="HTML"
             )
@@ -530,7 +539,8 @@ async def process_delete(message: types.Message, state: FSMContext):
         )
     except ValueError:
         await message.answer(
-            "❌ Напиши номер песни (число)!\n\n",
+            "❌ Напиши номер песни (число)!\n\n"
+            "Или нажми <b>Назад</b>",
             reply_markup=get_cancel_keyboard(),
             parse_mode="HTML"
         )
